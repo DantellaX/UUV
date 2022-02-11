@@ -1,2 +1,2 @@
-# Unmanned-Underwater-Vehicle-
+# UUV
 Berkeley capstone project
