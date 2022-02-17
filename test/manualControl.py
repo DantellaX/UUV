@@ -1,5 +1,6 @@
 # Import mavutil
 from pymavlink import mavutil
+import time
 
 # Create the connection
 master = mavutil.mavlink_connection('udpin:0.0.0.0:14550')
@@ -19,10 +20,13 @@ print('Armed')
 # x,y and r will be between [-1000 and 1000].
 
 while True:
-	master.mav.manual_control_send(
-    	master.target_system,
+    master.mav.manual_control_send(
+  	master.target_system,
+    	1000,
+   	0,
     	500,
     	0,
-    	500,
-    	0,
-   	0)
+   	0
+    )
+    print('x:' + str(master.recv_match(type='LOCAL_POSITION_NED', blocking=True).to_dict().get('x')) + ' ' + 'y:' + str(master.recv_match(type='LOCAL_POSITION_NED', blocking=True).to_dict().get('y')))
+    time.sleep(1)
