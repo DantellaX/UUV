@@ -12,13 +12,11 @@ def connect():
     return master
 
 def main():
-    #print(uf.getSpeed())
-    uf.setLocalPosition(10,-10)
-    uf.setLocalPosition(-10,10)
-    #uf.setGlobalPosition(338104590,-11893938642)
-    #uf.setTargetDepth(-5)
-    #while(True):
-    #	print(uf.getDepthPre())
+    uf.setLocalPositionPID(10,-10)
+    #uf.setLocalPosition(2,2)
+    #uf.setTargetDepthPID(-10)
+    #uf.setTargetYaw(180)
+        
     
 if __name__ == '__main__':
     main()

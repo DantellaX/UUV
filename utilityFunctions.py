@@ -4,11 +4,11 @@ import math
 import time
 
 gravity = 9.80665 # m/s^2
-rhoWater = 997.0474 # kg/m^3
-rhoSea = 1023.6 # kg/m^3
+densityWater = 997.0474 # kg/m^3
+densitySea = 1023.6 # kg/m^3
 pressureAir = 101325 # Pa
-r = 6378137 # radius of earth in meters
-c = r * 2 * math.pi # circumference of earth in meters
+radiusEarth = 6378137 # radius of earth in meters
+circumEarth = radiusEarth * 2 * math.pi # circumference of earth in meters
 
 # Create the connection
 master = mavutil.mavlink_connection('udpin:0.0.0.0:14550')
@@ -19,12 +19,12 @@ master.wait_heartbeat()
     
 # in Pa
 def getPressure():
-    pressure = round(master.recv_match(type='SCALED_PRESSURE', blocking=True).to_dict().get('press_abs') * 100.0, 4)
+    pressure = round(master.recv_match(type='SCALED_PRESSURE2', blocking=True).to_dict().get('press_abs') * 100.0, 4)
     return pressure
 
 # in meters
 def getDepthPre():
-    depth = (pressureAir- getPressure()) / (rhoWater * gravity)
+    depth = (pressureAir- getPressure()) / (densityWater * gravity)
     return round(depth, 4)
 
 # in meters
@@ -42,6 +42,9 @@ def getPitch():
 # in degrees    
 def getYaw():
     return round(math.degrees(master.recv_match(type='ATTITUDE', blocking=True).to_dict().get('yaw')), 4)
+
+def getIMU():
+    return master.recv_match(type='SCALED_IMU2', blocking=True).to_dict()
     
 # in degrees times 1e7   
 def getLat():
@@ -53,27 +56,41 @@ def getLon():
 
 # in degrees
 def meterToLat(x):
-    lat = x / c * 360
+    lat = x / circumEarth * 360
     return lat
 
 # in degrees
 def meterToLon(y):
-    lon = y * 360/ (c * math.cos(math.radians(getLat() / 10**7)))
+    lon = y * 360/ (circumEarth * math.cos(math.radians(getLat() / 10**7)))
     return lon
 
 # in degrees
 def latToMeter(lat):
-    x = lat * c / 360
+    x = lat * circumEarth / 360
     return x
 
 # in degrees
 def lonToMeter(lon):
-    y = lon * c * math.cos(math.radians(getLat() / 10**7)) / 360
+    y = lon * circumEarth * math.cos(math.radians(getLat() / 10**7)) / 360
     return y
 
-def getSpeed():
-    return master.recv_match(type='SCALED_IMU2', blocking=True).to_dict()
-    
+def getParam(param):
+    master.mav.param_request_read_send(
+        master.target_system, master.target_component,
+        param.encode(),
+        -1
+    )
+    return master.recv_match(type='PARAM_VALUE', blocking=True).to_dict()
+
+def setParam(param, value):
+    master.mav.param_set_send(
+        master.target_system, master.target_component,
+        param.encode(),
+        value,
+        mavutil.mavlink.MAV_PARAM_TYPE_REAL32
+    )
+    print(param + ' param value set to: ', value)
+
 def arm():
     master.arducopter_arm()
     master.motors_armed_wait()
@@ -95,47 +112,48 @@ def currentMode():
     value = master.wait_heartbeat().custom_mode
     if value == 0:
         return 'STABILIZE'
-    elif value == 1:
+    if value == 1:
         return 'ARCO'
-    elif value == 2:
+    if value == 2:
         return 'ALT_HOLD'
-    elif value == 3:
+    if value == 3:
         return 'AUTO'
-    elif value == 4:
+    if value == 4:
         return 'GUIDED'
-    elif value == 7:
+    if value == 7:
         return 'CIRCLE'
-    elif value == 9:
+    if value == 9:
         return 'SURFACE'
-    elif value == 16:
+    if value == 16:
         return 'PUSHOLD'
-    elif value == 19:
-        return 'MANUAL'
-        
+    if value == 19:
+        return 'MANUAL'      
+
 def setMode(mode):
-    master.set_mode(mode)
-    print(mode)	
-    
-def modeIs(mode):
-    try:
-        return bool(currentMode() == mode)
-    except:
-        return False
-        
-# x,y,r = [-1000,1000], z = [0,1000], x is forward, y is right, z is up.
+    master.set_mode(mode)	
+    if currentMode() == mode:
+        print(mode)
+    else:
+        print('Fail to set ' + mode)    
+
+
+# x,y,r = [-1000,1000], z = [0,1000], x is forward, y is right, z is up. Lowercap of r is 220.
 def manualControl(x,y,z,r):
-    master.mav.manual_control_send(
-      master.target_system, x, y, z, r, 0)
-    
+    while not isArmed():
+        arm()
+    master.mav.manual_control_send(master.target_system, x, y, z, r, 0)
+
+
 # Set the target attitude while in depth-hold mode. 'roll', 'pitch', and 'yaw' are angles in degrees.
 def setTargetAttitude(roll, pitch, yaw):  
     while not isArmed():
         arm()
-    while not modeIs('ALT_HOLD'):
-        setMode('ALT_HOLD')
-        
-    while round(getRoll(),0) > roll + 5 or round(getRoll(),0) < roll - 5 or round(getPitch(),0) > pitch + 5 or \
-    round(getPitch(),0) < pitch - 5 or round(getYaw(),0) > yaw + 5 or round(getYaw(),0) < yaw - 5:
+    while currentMode() != 'ALT_HOLD':
+        setMode('ALT_HOLD')    
+
+    t = 3
+    while getRoll() > roll + t or getRoll() < roll - t or getPitch() > pitch + t or \
+    getPitch() < pitch - t or getYaw() > yaw + t or getYaw() < yaw - t:
         master.mav.set_attitude_target_send(
         int(1e3 * (time.time() - boot_time)), # ms since boot
         master.target_system, master.target_component,
@@ -145,16 +163,45 @@ def setTargetAttitude(roll, pitch, yaw):
         QuaternionBase([math.radians(angle) for angle in (roll, pitch, yaw)]),
         0, 0, 0, 0 # roll rate, pitch rate, yaw rate, thrust
         )
-        print('roll: ', getRoll(), ' ', 'pitch: ', getPitch(), ' ', 'yaw: ', getYaw())
+        print('roll: ', getRoll(), 'pitch: ', getPitch(), 'yaw: ', getYaw())
         time.sleep(1)
-    print('Reach Target Attitude')
 
+
+# Set the target yaw in degrees. yaw in [0,360].
+def setTargetYaw(yaw):
+    while not isArmed():
+        arm()
+    while currentMode() != 'ALT_HOLD':
+        setMode('ALT_HOLD')
+
+    t = 2
+    currentYaw = getYaw() 
+    if currentYaw < 0:
+        currentYaw = 360 + currentYaw 
+    while currentYaw > yaw + t or currentYaw < yaw - t: 
+        error = yaw - currentYaw
+        Kp = 2
+        if error > 0:
+            u = int(215 + Kp * error)
+        if error < 0:
+            u = int(-215 + Kp * error)
+        if u > 1000:
+            u = 1000
+        if u < -1000:
+            u = -1000
+        manualControl(0,0,500,u)
+        currentYaw = getYaw()
+        if currentYaw < 0:
+            currentYaw = 360 + currentYaw
+        print('yaw: ', currentYaw)
+    manualControl(0,0,500,0)
     
+
 # Set the target depth while in depth-hold mode.'depth' is technically an altitude, so set as negative meters below the surface.
 def setTargetDepth(depth):
     while not isArmed():
         arm()
-    while not modeIs('ALT_HOLD'):
+    while currentMode() != 'ALT_HOLD':
         setMode('ALT_HOLD')
     
     while round(getDepthPre(),0) != depth:
@@ -185,11 +232,40 @@ def setTargetDepth(depth):
         time.sleep(1)
     print('Reach Target Depth')
 
-# Set the target position while in depth-hold mode. Latitude and Longitude are in degrees.
+
+# Set the target depth while in depth-hold mode via PID controller. Set as negative meters below the surface.
+def setTargetDepthPID(depth):
+    while not isArmed():
+        arm()
+    while currentMode() != 'ALT_HOLD':
+        setMode('ALT_HOLD')
+
+    while round(getDepthPre(),0) != depth:
+        error = abs(depth - getDepthPre())
+        if getDepthPre() > depth:
+            Kp = 250
+            u = int(500 - Kp * error) 
+            if u < 0:
+                u = 0
+            manualControl(0,0,u,0)
+    
+        elif getDepthPre() < depth:
+            Kp = 100
+            u = int(500 + Kp * error) 
+            if u > 1000:
+                u = 1000
+            manualControl(0,0,u,0)
+
+        print('depth: ', getDepthPre())
+        time.sleep(1)
+    print('Reach Target Depth')
+
+
+# Set the target position while in guided mode. Latitude and Longitude are in degrees times 1e7.
 def setGlobalPosition(lat, lon):
     while not isArmed():
         arm()
-    while not modeIs('GUIDED'):
+    while currentMode() != 'GUIDED':
         setMode('GUIDED')
     
     while getLat() != lat or getLon() != lon:
@@ -221,23 +297,26 @@ def setGlobalPosition(lat, lon):
         time.sleep(1)
     print('Reach Target Position')
 
-# Set the target position while in depth-hold mode. Set as positive meters for north and east, negative meters for south and west.
+
+# Set the target position while in guided mode. Set as positive meters for north and east, negative meters for south and west.
 def setLocalPosition(x, y):
     while not isArmed():
         arm()
-    while not modeIs('GUIDED'):
+ 
+    while currentMode() != 'GUIDED':
         setMode('GUIDED')
-     
-    Xo = getLat()
-    Yo = getLon()
-    desLat = int(round(Xo + meterToLat(x) * 10**7, 0))
-    desLon = int(round(Yo + meterToLon(y) * 10**7, 0))
+
+    Xo = getLon()
+    Yo = getLat()
+    
+    desLon = int(round(Xo + meterToLon(x) * 10**7, 0))
+    desLat = int(round(Yo + meterToLat(y) * 10**7, 0))
     
     while round(0.1 * getLat(), 0) !=  round(0.1 * desLat, 0) or round(0.1 * getLon(), 0) != round(0.1 * desLon, 0):
-        currentX = latToMeter((getLat() - Xo) / 10**7)
-        currentY = lonToMeter((getLon() - Yo) / 10**7)
-        print('lat: ', getLat(), 'x: ', currentX)
-        print('lon: ', getLon(), 'y: ', currentY)
+        currentX = lonToMeter((getLon() - Xo) / 10**7)
+        currentY = latToMeter((getLat() - Yo) / 10**7)
+        print('x: ', currentX)
+        print('y: ', currentY)
         print('heading: ', getYaw())
 
         master.mav.set_position_target_global_int_send(
@@ -266,5 +345,52 @@ def setLocalPosition(x, y):
         time.sleep(1)
     print('Reach Target Position')
     
-    
 
+# Set the target position via PID controller. Set as positive meters for north and east, negative meters for south and west.
+def setLocalPositionPID(x, y):
+    while not isArmed():
+        arm()
+
+    Xo = getLon()
+    Yo = getLat()
+    desLon = int(round(Xo + meterToLon(x) * 10**7, 0))
+    desLat = int(round(Yo + meterToLat(y) * 10**7, 0))
+    currentX = lonToMeter((getLon() - Xo) / 10**7)
+    currentY = latToMeter((getLat() - Yo) / 10**7)
+
+    t1 = 1
+    while currentX > round(x, 0) + t1 or currentX < round(x, 0) - t1 or currentY > round(y, 0) + t1 or currentY < round(y, 0) - t1:
+        currentX = lonToMeter((getLon() - Xo) / 10**7)
+        currentY = latToMeter((getLat() - Yo) / 10**7)
+        print('x: ', currentX)
+        print('y: ', currentY)
+
+        errorX = x - currentX
+        errorY = y - currentY
+        if errorY > 0:
+            heading = math.degrees(math.atan(errorX / errorY))
+        elif errorY < 0:
+            if errorX > 0:
+                heading = math.degrees(math.atan(errorX / errorY)) + 180
+            elif errorX < 0:
+                heading = math.degrees(math.atan(errorX / errorY)) - 180
+
+        if heading < 0:
+            heading = 360 + heading
+
+        t = 2
+        currentYaw = getYaw()
+        if currentYaw < 0:
+            currentYaw = 360 + currentYaw
+        if currentYaw > heading + t or currentYaw < heading - t:
+            manualControl(0,0,500,0)
+            setTargetYaw(heading)
+
+        errorDistance = math.sqrt(errorX**2 + errorY**2)
+        Kp = 100
+        u = int(Kp * errorDistance) 
+        if u > 1000:
+            u = 1000
+        manualControl(u,0,500,0)
+
+    print('Reach Target Position')
