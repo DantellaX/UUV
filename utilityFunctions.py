@@ -3,6 +3,7 @@ from pymavlink.quaternion import QuaternionBase
 import math
 import time
 
+
 gravity = 9.80665 # m/s^2
 densityWater = 997.0474 # kg/m^3
 densitySea = 1023.6 # kg/m^3
@@ -173,6 +174,11 @@ def setTargetYaw(yaw):
         arm()
     while currentMode() != 'ALT_HOLD':
         setMode('ALT_HOLD')
+    
+    start = boot_time
+    tt = time.localtime()
+    now = time.strftime("%H:%M:%S", tt)
+    data = open('yaw' + str(now), 'x')
 
     t = 2
     currentYaw = getYaw() 
@@ -194,6 +200,11 @@ def setTargetYaw(yaw):
         if currentYaw < 0:
             currentYaw = 360 + currentYaw
         print('yaw: ', currentYaw)
+        
+        end = time.time()
+        data.write(str(end - start) + ' ' + str(getYaw()) + '\n')
+
+    data.close()
     manualControl(0,0,500,0)
     
 
@@ -240,6 +251,11 @@ def setTargetDepthPID(depth):
     while currentMode() != 'ALT_HOLD':
         setMode('ALT_HOLD')
 
+    start = boot_time
+    t = time.localtime()
+    now = time.strftime("%H:%M:%S", t)
+    data = open('depth' + str(now), 'a')
+
     while round(getDepthPre(),0) != depth:
         error = abs(depth - getDepthPre())
         if getDepthPre() > depth:
@@ -250,14 +266,16 @@ def setTargetDepthPID(depth):
             manualControl(0,0,u,0)
     
         elif getDepthPre() < depth:
-            Kp = 100
+            Kp = 125
             u = int(500 + Kp * error) 
             if u > 1000:
                 u = 1000
             manualControl(0,0,u,0)
 
         print('depth: ', getDepthPre())
-        time.sleep(1)
+        end = time.time()
+        data.write(str(end - start) + ' ' + str(getDepthPre()) + '\n')
+    data.close()
     print('Reach Target Depth')
 
 
@@ -351,6 +369,11 @@ def setLocalPositionPID(x, y):
     while not isArmed():
         arm()
 
+    start = boot_time
+    tt = time.localtime()
+    now = time.strftime("%H:%M:%S", tt)
+    data = open('position' + str(now), 'x')
+
     Xo = getLon()
     Yo = getLat()
     desLon = int(round(Xo + meterToLon(x) * 10**7, 0))
@@ -392,5 +415,8 @@ def setLocalPositionPID(x, y):
         if u > 1000:
             u = 1000
         manualControl(u,0,500,0)
+        end = time.time()
+        data.write(str(end - start) + ' ' + str(currentX) + ' ' + str(currentY) + '\n')
 
+    data.close()
     print('Reach Target Position')

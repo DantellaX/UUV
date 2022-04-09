@@ -12,9 +12,9 @@ def connect():
     return master
 
 def main():
-    uf.setLocalPositionPID(10,-10)
+    uf.setLocalPositionPID(5,5)
     #uf.setLocalPosition(2,2)
-    #uf.setTargetDepthPID(-10)
+    #uf.setTargetDepthPID(0)
     #uf.setTargetYaw(180)
         
     
