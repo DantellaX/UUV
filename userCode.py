@@ -3,19 +3,11 @@ from pymavlink import mavutil
 import time
 import math
 
-def connect():
-    # Create the connection
-    master = mavutil.mavlink_connection('udpin:0.0.0.0:14550')
-    boot_time = time.time()
-    # Wait a heartbeat before sending commands
-    master.wait_heartbeat()
-    return master
-
 def main():
-    uf.setLocalPositionPID(5,5)
-    #uf.setLocalPosition(2,2)
-    #uf.setTargetDepthPID(0)
-    #uf.setTargetYaw(180)
+    task = uf.UUVcontrol()
+    task.set_target_depth(-5)
+    #task.set_local_position(10,10)
+    #task.set_target_yaw(180)
         
     
 if __name__ == '__main__':
