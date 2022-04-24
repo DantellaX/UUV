@@ -177,7 +177,6 @@ class UUVcontrol():
         while self.current_mode() != 'MANUAL':
             self.set_mode('MANUAL')
         
-        start = self.boot_time
         tt = time.localtime()
         now = time.strftime("%H:%M:%S", tt)
         data = open('Documents/UUV/data/' + 'yaw' + str(now), 'x')
@@ -186,25 +185,30 @@ class UUVcontrol():
         current_yaw = self.get_yaw() 
         if current_yaw < 0:
             current_yaw = 360 + current_yaw 
+        #i = 0
         while current_yaw > yaw + t or current_yaw < yaw - t: 
+            #i += 1
             error = yaw - current_yaw
             Kp = 0.5
-            if error > 0:
-                u = int(130 + Kp*error)
-            if error < 0:
-                u = int(-130 + Kp*error)
+            if (error > 0 and error < 180) or error < -180:
+                if error < -180:
+                    error = error + 180
+                u = int(130 + abs(Kp*error))
+            elif (error < 0 and error > -180) or error > 180:
+                if error > 180:
+                    error = error - 180
+                u = int(-130 - abs(Kp*error))
             if u > 1000:
                 u = 1000
             if u < -1000:
                 u = -1000
             self.manual_control(0, 0, 500, u)
+
             current_yaw = self.get_yaw()
             if current_yaw < 0:
                 current_yaw = 360 + current_yaw
-            print('yaw: ', current_yaw)
-            
-            end = time.time()
-            data.write(str(end - start) + ', ' + str(self.get_yaw()) + '\n')
+            #print('yaw: ', current_yaw)
+            data.write(str(current_yaw) + '\n')
 
         data.close()
         self.manual_control(0, 0, 500, 0)
@@ -253,36 +257,32 @@ class UUVcontrol():
         while self.current_mode() != 'MANUAL':
             self.set_mode('MANUAL')
 
-        start = self.boot_time
-        t = time.localtime()
-        now = time.strftime("%H:%M:%S", t)
-        data = open('Documents/UUV/data/' + 'depth' + str(now), 'a')
-
         current_depth = self.get_depth_pressure()
-        while round(current_depth, 0) != depth:
-            error = abs(depth - current_depth)
-            if current_depth > depth:
-                Kp = 250
-                u = int(500 - Kp*error) 
-                if u < 0:
-                    u = 0
-                self.manual_control(0, 0, u, 0)
-        
-            elif current_depth < depth:
-                Kp = 125
-                u = int(500 + Kp*error) 
-                if u > 1000:
-                    u = 1000
-                self.manual_control(0, 0, u, 0)
-
-            print('depth: ', current_depth)
+        Kp = 100
+        Ki = 1
+        Kd = 7.5
+        error = 0
+        integral = 0
+        prev = 0
+        dt = 1
+        #i = 0
+        while True:
+            #i += 1
+            prev = error
+            error = depth - current_depth
+            integral = integral + error * dt
+            derivative = (error-prev) / dt
+            u = int(500 + Kp*error + Ki*integral + Kd*derivative)
+            if u > 1000:
+                u = 1000
+            elif u < 0:
+                u = 0
+            self.manual_control(0, 0, u, 0)
+            print(current_depth)
+            #print('depth: ', current_depth)
             current_depth = self.get_depth_pressure()
-            end = time.time()
-            data.write(str(end - start) + ', ' + str(self.get_depth_pressure()) + '\n')
-        data.close()
-        print('Reach Target Depth')
 
-
+    '''
     # Set the target position while in guided mode. Latitude and Longitude are in degrees times 1e7.
     def set_global_position(self, lat, lon):
         while not self.is_armed():
@@ -318,8 +318,8 @@ class UUVcontrol():
             print('lon: ', self.get_lon())
             time.sleep(1)
         print('Reach Target Position')
-
-
+    '''
+    '''
     # Set the target position while in guided mode. x:east-west, y:north-south. Set as positive meters for north and east, negative meters for south and west.
     def set_local_position_guided(self, x, y):
         while not self.is_armed():
@@ -365,7 +365,7 @@ class UUVcontrol():
             )
             time.sleep(1)
         print('Reach Target Position')
-        
+    '''
 
     # Set the target position via PID controller. x:east-west, y:north-south. Set as positive meters for north and east, negative meters for south and west.
     def set_local_position(self, x, y):
@@ -374,7 +374,6 @@ class UUVcontrol():
         while self.current_mode() != 'MANUAL':
             self.set_mode('MANUAL')
 
-        start = self.boot_time
         tt = time.localtime()
         now = time.strftime("%H:%M:%S", tt)
         data = open('Documents/UUV/data/' + 'position' + str(now) , 'x')
@@ -421,8 +420,8 @@ class UUVcontrol():
             current_y = self.lat_to_meter((self.get_lat()-y_origin) / 10**7)
             print('x: ', current_x)
             print('y: ', current_y)
-            end = time.time()
-            data.write(str(end - start) + ', ' + str(current_x) + ', ' + str(current_y) + '\n')
+            #print(self.master.recv_match(type='LOCAL_POSITION_NED', blocking=True).to_dict().get('x'), self.master.recv_match(type='LOCAL_POSITION_NED', blocking=True).to_dict().get('y'))    
+            data.write(str(current_x) + ' ' + str(current_y) + '\n')
 
         data.close()
         print('Reach Target Position')
